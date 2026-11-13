@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+# Audio outputs and inputs from PipeWire; Enter makes one the default.
+# @zunder.name        Audio
+# @zunder.prefix      audio
+# @zunder.glyph       
+# @zunder.description Switch the default audio output or input with wpctl
+# @zunder.requires    wpctl
+# @zunder.platforms   linux
+import json
+import re
+import shutil
+import subprocess
+import sys
+
+SECTION = re.compile(r"^\s*[│ ]*[├└]─ ([\w ]+):\s*$")
+NODE = re.compile(r"^[\s│]*(\*)?\s*(\d+)\.\s+(.*?)\s*(?:\[vol: ([\d.]+)( MUTED)?\])?\s*$")
+
+
+def nodes(status):
+    """Sinks and Sources from the Audio block of `wpctl status`."""
+    out, top, sub = [], None, None
+    for line in status.splitlines():
+        if line and not line[0].isspace() and not line.startswith(("│", "├", "└")):
+            top, sub = line.split()[0], None
+            continue
+        m = SECTION.match(line)
+        if m:
+            sub = m.group(1)
+            continue
+        if top != "Audio" or sub not in ("Sinks", "Sources"):
+            continue
+        m = NODE.match(line)
+        if m:
+            out.append({"kind": "output" if sub == "Sinks" else "input", "default": bool(m.group(1)),
+                        "id": m.group(2), "name": m.group(3),
+                        "vol": float(m.group(4)) if m.group(4) else None, "muted": bool(m.group(5))})
+    return out
+
+
+def main():
+    if not shutil.which("wpctl"):
+        sys.exit("wpctl not found: install wireplumber")
+    query = sys.argv[1].strip().lower() if len(sys.argv) > 1 else ""
+    status = subprocess.run(["wpctl", "status"], capture_output=True, text=True, timeout=3).stdout
+    found = nodes(status)
+    for n in sorted(found, key=lambda n: (n["kind"] != "output", not n["default"])):
+        if query and query not in n["name"].lower() and query not in n["kind"]:
+            continue
+        vol = "" if n["vol"] is None else f"{round(n['vol'] * 100)}%"
+        if n["muted"]:
+            vol = f"muted · {vol}"
+        i = n["id"]
+        print(json.dumps({
+            "title": n["name"],
+            "subtitle": n["kind"] + (" · default" if n["default"] else ""),
+            "hint": vol,
+            "glyph": ("" if n["kind"] == "output" else "") if not n["muted"]
+                     else ("" if n["kind"] == "output" else ""),
+            "action": {"run": f"wpctl set-default {i}"},
+            "actions": [{"title": "Unmute" if n["muted"] else "Mute", "run": f"wpctl set-mute {i} toggle"}]
+                       + [{"title": f"Volume {v}%", "run": f"wpctl set-volume {i} {v}%"}
+                          for v in (25, 50, 75, 100)],
+        }, ensure_ascii=False))
+    if not found:
+        sys.exit("no audio devices (is PipeWire running?)")
+
+
+if __name__ == "__main__":
+    main()
