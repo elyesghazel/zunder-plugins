@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+# List Wi-Fi networks; Enter connects, asking for a password in a terminal when needed.
+# @zunder.name        Wi-Fi
+# @zunder.prefix      wifi
+# @zunder.glyph       
+# @zunder.description Connect to Wi-Fi networks with nmcli
+# @zunder.requires    nmcli
+# @zunder.platforms   linux
+import json
+import shlex
+import shutil
+import subprocess
+import sys
+
+
+def nmcli(*args):
+    r = subprocess.run(["nmcli", "-t", *args], capture_output=True, text=True, timeout=5)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def fields(line):
+    """nmcli -t separates with ':' and escapes ':' and '\\' with a backslash."""
+    out, cur, esc = [], "", False
+    for ch in line:
+        if esc:
+            cur += ch
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+    return out
+
+
+def bars(signal):
+    return "▂▄▆█"[: max(1, min(4, (signal + 24) // 25))]
+
+
+def main():
+    if not shutil.which("nmcli"):
+        sys.exit("nmcli not found: install NetworkManager")
+    query = sys.argv[1].strip().lower() if len(sys.argv) > 1 else ""
+    known = {f[0] for f in map(fields, nmcli("-f", "NAME,TYPE", "connection", "show").splitlines())
+             if len(f) == 2 and f[1] == "802-11-wireless"}
+    nets = {}
+    for f in map(fields, nmcli("-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list",
+                               "--rescan", "no").splitlines()):
+        if len(f) != 4 or not f[1]:
+            continue
+        inuse, ssid, signal, security = f[0] == "*", f[1], int(f[2] or 0), f[3]
+        old = nets.get(ssid)
+        if old is None or inuse or (signal > old["signal"] and not old["inuse"]):
+            nets[ssid] = {"inuse": inuse, "signal": signal, "security": security}
+
+    rows = []
+    for ssid, n in nets.items():
+        if query and query not in ssid.lower():
+            continue
+        q = shlex.quote(ssid)
+        secure = n["security"] not in ("", "--")
+        if n["inuse"]:
+            action = {"run": f"nmcli connection down id {q}"}
+            subtitle = "connected · Enter disconnects"
+        elif ssid in known:
+            action = {"run": f"nmcli connection up id {q}"}
+            subtitle = "saved"
+        elif secure:
+            action = {"term": f"nmcli --ask device wifi connect {q}"}
+            subtitle = "password in terminal"
+        else:
+            action = {"run": f"nmcli device wifi connect {q}"}
+            subtitle = "open network"
+        actions = [{"title": "Copy SSID", "copy": ssid}]
+        if ssid in known:
+            actions.append({"title": "Forget network", "run": f"nmcli connection delete id {q}"})
+        rows.append((not n["inuse"], -n["signal"], {
+            "title": ssid,
+            "subtitle": f"{subtitle} · {n['security']}" if secure else subtitle,
+            "hint": f"{bars(n['signal'])} {n['signal']}%",
+            "glyph": "" if n["inuse"] else "" if secure else "",
+            "action": action,
+            "actions": actions,
+        }))
+    for *_, row in sorted(rows, key=lambda r: r[:2]):
+        print(json.dumps(row, ensure_ascii=False))
+    if not query or "rescan".startswith(query):
+        print(json.dumps({"title": "Rescan", "subtitle": "refresh the network list",
+                          "glyph": "", "action": {"run": "nmcli device wifi rescan"}}))
+    if not nets:
+        print(json.dumps({"title": "No networks", "subtitle": "is Wi-Fi on? Enter turns it on",
+                          "action": {"run": "nmcli radio wifi on"}}))
+
+
+if __name__ == "__main__":
+    main()
