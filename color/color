@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+# Pick a colour from the screen with hyprpicker; recent picks with a swatch in the preview.
+# @zunder.name        Color Picker
+# @zunder.prefix      color
+# @zunder.glyph       
+# @zunder.description Pick a colour from the screen, copy it as hex, rgb or hsl
+# @zunder.requires    hyprpicker wl-copy
+# @zunder.platforms   linux
+import colorsys
+import json
+import os
+import re
+import shlex
+import shutil
+import struct
+import subprocess
+import sys
+import time
+import zlib
+
+DIR = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "zunder", "color")
+HISTORY = os.path.join(DIR, "history")
+SELF = shlex.quote(os.path.realpath(__file__))
+HEX = re.compile(r"^#?([0-9a-f]{3}|[0-9a-f]{6})$", re.I)
+
+
+def parse(s):
+    m = HEX.match(s.strip())
+    if not m:
+        return None
+    h = m.group(1).lower()
+    return "#" + ("".join(c * 2 for c in h) if len(h) == 3 else h)
+
+
+def swatch(hexc):
+    """A 96x96 PNG of the colour, written once per colour."""
+    path = os.path.join(DIR, hexc[1:] + ".png")
+    if not os.path.exists(path):
+        rgb = bytes.fromhex(hexc[1:])
+        raw = (b"\0" + rgb * 96) * 96
+
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+        png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 96, 96, 8, 2, 0, 0, 0))
+               + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+        os.makedirs(DIR, exist_ok=True)
+        with open(path + ".tmp", "wb") as f:
+            f.write(png)
+        os.replace(path + ".tmp", path)
+    return path
+
+
+def formats(hexc):
+    r, g, b = bytes.fromhex(hexc[1:])
+    h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    return {"hex": hexc, "rgb": f"rgb({r}, {g}, {b})",
+            "hsl": f"hsl({round(h * 360)}, {round(s * 100)}%, {round(l * 100)}%)"}
+
+
+def row(hexc, subtitle):
+    f = formats(hexc)
+    return {"title": hexc, "subtitle": subtitle, "hint": f["rgb"], "image": swatch(hexc),
+            "preview": "\n".join(f.values()), "action": {"copy": hexc},
+            "actions": [{"title": f"Copy {f['rgb']}", "copy": f["rgb"]},
+                        {"title": f"Copy {f['hsl']}", "copy": f["hsl"]},
+                        {"title": "Copy without #", "copy": hexc[1:]}]}
+
+
+def history():
+    try:
+        with open(HISTORY) as f:
+            seen, out = set(), []
+            for c in reversed(f.read().split()):
+                c = parse(c)
+                if c and c not in seen:
+                    seen.add(c)
+                    out.append(c)
+            return out[:30]
+    except OSError:
+        return []
+
+
+def pick():
+    time.sleep(0.2)  # let zunder close first
+    r = subprocess.run(["hyprpicker", "-f", "hex"], capture_output=True, text=True)
+    c = parse(r.stdout.strip().split("\n")[-1]) if r.stdout.strip() else None
+    if not c:
+        return
+    subprocess.run(["wl-copy", c], check=False)
+    os.makedirs(DIR, exist_ok=True)
+    with open(HISTORY, "a") as f:
+        f.write(c + "\n")
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "Colour copied", c, "-i", swatch(c)], check=False)
+
+
+def main():
+    if sys.argv[1:2] == ["--pick"]:
+        pick()
+        return
+    q = sys.argv[1].strip() if len(sys.argv) > 1 else ""
+    typed = parse(q)
+    if typed:
+        print(json.dumps(row(typed, "typed"), ensure_ascii=False))
+    if not q or "pick".startswith(q.lower()):
+        print(json.dumps({"title": "Pick a colour", "subtitle": "click anywhere on screen, copies hex",
+                          "action": {"run": f"{SELF} --pick"}}))
+    for c in history():
+        if c != typed and (not q or q.lower().lstrip("#") in c):
+            print(json.dumps(row(c, "recent"), ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
