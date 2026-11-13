@@ -1,0 +1,16 @@
+#!/bin/sh
+# Copy the local IP address.
+# @zunder.name  Copy Local IP
+# @zunder.mode  command
+# @zunder.glyph 
+# @zunder.description Copy your local IPv4 address to the clipboard
+# @zunder.requires    ip wl-copy
+# @zunder.platforms   linux
+ip=$(ip -4 -o route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
+if [ -z "$ip" ]; then
+  notify-send "No IP" "not connected" 2>/dev/null
+  exit 1
+fi
+printf %s "$ip" | wl-copy
+notify-send "IP copied" "$ip" 2>/dev/null
+exit 0
