@@ -1,0 +1,26 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Headers, shebang, executable bit
+        run: python3 scripts/build-index.py --check
+      - name: Shellcheck sh/bash plugins
+        run: |
+          files=$(python3 scripts/build-index.py --shell)
+          if [ -n "$files" ]; then
+            echo "$files"
+            # shellcheck disable=SC2086
+            shellcheck $files
+          fi
+      - name: Index builds
+        run: python3 scripts/build-index.py && python3 -m json.tool index.json > /dev/null
