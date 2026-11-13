@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+# Your GitHub repos; Enter opens one in the browser.
+# @zunder.name        GitHub
+# @zunder.prefix      gh
+# @zunder.glyph       
+# @zunder.description Search your GitHub repos and open them
+# @zunder.platforms   linux macos
+# @zunder.setting     token "GitHub token (optional, falls back to the gh CLI)"
+# @zunder.setting     limit "How many repos to list (default 100)"
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
+                     "zunder", "github-repos.json")
+TTL = 600
+
+
+def limit():
+    try:
+        return max(1, int(os.environ.get("ZUNDER_LIMIT", "100")))
+    except ValueError:
+        return 100
+
+
+def fetch_api(token, n):
+    repos, page = [], 1
+    while len(repos) < n:
+        req = urllib.request.Request(
+            f"https://api.github.com/user/repos?per_page=100&sort=pushed&page={page}",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                     "User-Agent": "zunder-github-plugin"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            batch = json.load(r)
+        repos += [{"name": b["full_name"], "description": b.get("description") or "",
+                   "url": b["html_url"], "ssh": b["ssh_url"], "private": b["private"],
+                   "stars": b["stargazers_count"]} for b in batch]
+        if len(batch) < 100:
+            break
+        page += 1
+    return repos[:n]
+
+
+def fetch_gh(n):
+    if not shutil.which("gh"):
+        raise RuntimeError("set a token in Settings → Plugins or install gh")
+    r = subprocess.run(["gh", "repo", "list", "--limit", str(n), "--json",
+                        "nameWithOwner,description,url,sshUrl,isPrivate,stargazerCount"],
+                       capture_output=True, text=True, timeout=20)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr.strip().splitlines() or ["gh failed"])[-1])
+    return [{"name": b["nameWithOwner"], "description": b.get("description") or "",
+             "url": b["url"], "ssh": b["sshUrl"], "private": b["isPrivate"],
+             "stars": b["stargazerCount"]} for b in json.loads(r.stdout)]
+
+
+def refresh():
+    token = os.environ.get("ZUNDER_TOKEN", "").strip()
+    repos = fetch_api(token, limit()) if token else fetch_gh(limit())
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+    tmp = CACHE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(repos, f)
+    os.replace(tmp, CACHE)
+    return repos
+
+
+def load():
+    """Cached list; a stale cache is used as is and refreshed in the background."""
+    try:
+        age = time.time() - os.path.getmtime(CACHE)
+        with open(CACHE) as f:
+            repos = json.load(f)
+    except (OSError, ValueError):
+        return refresh()
+    if age > TTL:
+        os.utime(CACHE)  # one refresh at a time, not one per keystroke
+        subprocess.Popen([sys.executable, os.path.realpath(__file__), "--refresh"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return repos
+
+
+def main():
+    if sys.argv[1:2] == ["--refresh"]:
+        refresh()
+        return
+    words = (sys.argv[1] if len(sys.argv) > 1 else "").lower().split()
+    try:
+        repos = load()
+    except Exception as e:  # network, auth, gh missing: show it as the result
+        sys.exit(f"GitHub: {e}")
+    for r in repos:
+        hay = (r["name"] + " " + r["description"]).lower()
+        if not all(w in hay for w in words):
+            continue
+        print(json.dumps({
+            "title": r["name"],
+            "subtitle": r["description"][:100],
+            "hint": " · ".join(filter(None, ["private" if r["private"] else "",
+                                              f"★ {r['stars']}" if r["stars"] else ""])),
+            "action": {"open": r["url"]},
+            "actions": [{"title": "Copy URL", "copy": r["url"]},
+                        {"title": "Copy SSH clone URL", "copy": r["ssh"]},
+                        {"title": "Open issues", "open": r["url"] + "/issues"},
+                        {"title": "Open pull requests", "open": r["url"] + "/pulls"}],
+        }, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
