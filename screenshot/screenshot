@@ -1,0 +1,65 @@
+#!/bin/sh
+# Screenshot a region, a window or the screen; saved to a folder and copied.
+# @zunder.name        Screenshot
+# @zunder.prefix      shot
+# @zunder.glyph       
+# @zunder.description Screenshot a region, window or screen with grim and slurp, saved and copied
+# @zunder.requires    grim slurp wl-copy jq hyprctl
+# @zunder.platforms   linux
+# @zunder.setting     dir "Folder for screenshots (default ~/Pictures/Screenshots)"
+
+dir=${ZUNDER_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots}
+case $dir in "~"*) dir=$HOME${dir#\~} ;; esac
+
+take() {
+  sleep 0.3 # let zunder close before the capture
+  case $1 in
+    region) geom=$(slurp) || exit 0 ;;
+    window)
+      # windows on the workspaces that are visible right now, as slurp boxes
+      ws=$(hyprctl -j monitors | jq -c '[.[].activeWorkspace.id]')
+      geom=$(hyprctl -j clients | jq -r --argjson ws "$ws" '.[]
+        | .workspace.id as $id
+        | select(.mapped and (.hidden | not) and ($ws | index($id) != null))
+        | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"' | slurp -r) || exit 0
+      [ -n "$geom" ] || exit 0 ;;
+    screen) output=$(hyprctl -j monitors | jq -r '.[] | select(.focused) | .name') ;;
+    all) ;;
+    *) echo "unknown mode $1" >&2; exit 1 ;;
+  esac
+  mkdir -p "$dir"
+  file=$dir/$(date +%Y-%m-%d_%H-%M-%S).png
+  if [ -n "$geom" ]; then
+    grim -g "$geom" "$file"
+  elif [ -n "$output" ]; then
+    grim -o "$output" "$file"
+  else
+    grim "$file"
+  fi || exit 1
+  wl-copy --type image/png < "$file"
+  command -v notify-send >/dev/null && notify-send -i "$file" "Screenshot saved" "$file"
+  exit 0
+}
+
+if [ "$1" = --take ]; then
+  take "$2"
+fi
+
+self=$(realpath "$0")
+q=$(printf %s "$1" | tr '[:upper:]' '[:lower:]')
+row() { # mode title subtitle
+  hay=$(printf '%s %s' "$1" "$2" | tr '[:upper:]' '[:lower:]')
+  case $hay in *"$q"*) ;; *) return ;; esac
+  # json strings: escape backslashes and quotes in the path
+  path=$(printf %s "$self" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf '{"title": "%s", "subtitle": "%s", "action": {"run": "\\"%s\\" --take %s"}}\n' "$2" "$3" "$path" "$1"
+}
+row region "Region" "drag a rectangle"
+row window "Window" "click a window"
+row screen "Screen" "the focused monitor"
+row all "All screens" "every monitor in one image"
+label="open folder"
+case $label in *"$q"*)
+  d=$(printf %s "$dir" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf '{"title": "Open folder", "subtitle": "%s", "action": {"open": "%s"}}\n' "$d" "$d" ;;
+esac
