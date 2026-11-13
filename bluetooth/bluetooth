@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# Paired Bluetooth devices; Enter connects or disconnects.
+# @zunder.name        Bluetooth
+# @zunder.prefix      bt
+# @zunder.glyph       
+# @zunder.description Connect and disconnect paired Bluetooth devices with bluetoothctl
+# @zunder.requires    bluetoothctl
+# @zunder.platforms   linux
+import json
+import re
+import shutil
+import subprocess
+import sys
+
+DEVICE = re.compile(r"^Device ([0-9A-F]{2}(?::[0-9A-F]{2}){5}) (.*)$", re.I)
+
+
+def btctl(*args):
+    try:
+        r = subprocess.run(["bluetoothctl", *args], capture_output=True, text=True, timeout=3,
+                           stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def devices(*args):
+    return {m.group(1): m.group(2) for m in map(DEVICE.match, btctl(*args).splitlines()) if m}
+
+
+def main():
+    if not shutil.which("bluetoothctl"):
+        sys.exit("bluetoothctl not found: install bluez-utils")
+    query = sys.argv[1].strip().lower() if len(sys.argv) > 1 else ""
+    powered = "Powered: yes" in btctl("show")
+    # BlueZ 5.65+ takes a filter; older versions have paired-devices
+    paired = devices("devices", "Paired") or devices("paired-devices")
+    connected = set(devices("devices", "Connected")) if powered else set()
+
+    if not query or "power".startswith(query) or query in ("on", "off"):
+        print(json.dumps({"title": "Turn Bluetooth " + ("off" if powered else "on"),
+                          "subtitle": "powered" if powered else "off", "glyph": "",
+                          "action": {"run": "bluetoothctl power " + ("off" if powered else "on")}}))
+    rows = sorted(paired.items(), key=lambda kv: (kv[0] not in connected, kv[1].lower()))
+    for mac, name in rows:
+        if query and query not in name.lower() and query not in mac.lower():
+            continue
+        on = mac in connected
+        print(json.dumps({
+            "title": name,
+            "subtitle": "connected · Enter disconnects" if on else "paired",
+            "hint": mac,
+            "glyph": "" if on else "",
+            "action": {"run": f"bluetoothctl disconnect {mac}" if on else
+                       f"bluetoothctl power on && bluetoothctl connect {mac}"},
+            "actions": [{"title": "Copy address", "copy": mac},
+                        {"title": "Remove (unpair)", "run": f"bluetoothctl remove {mac}"}],
+        }, ensure_ascii=False))
+    if not paired:
+        print(json.dumps({"title": "No paired devices", "subtitle": "pair one in a terminal",
+                          "action": {"term": "bluetoothctl"}}))
+
+
+if __name__ == "__main__":
+    main()
