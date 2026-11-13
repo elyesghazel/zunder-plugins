@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+# Your next events from one or more ICS calendar URLs.
+# @zunder.name        Agenda
+# @zunder.prefix      cal
+# @zunder.glyph       \uf073
+# @zunder.description Your next events from an ICS calendar URL
+# @zunder.platforms   linux macos
+# @zunder.setting     url "ICS calendar URL (several separated by spaces), e.g. Google's secret iCal address"
+# @zunder.setting     days "How many days ahead to show (default 14)"
+import calendar
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9
+    ZoneInfo = None
+
+CACHE_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "zunder", "agenda")
+TTL = 900
+LOCAL = dt.datetime.now().astimezone().tzinfo
+DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+LINK = re.compile(r"https?://[^\s<>\"\\]*(?:meet\.google|zoom\.us|teams\.microsoft|teams\.live|webex|whereby|jit\.si)[^\s<>\"\\]*")
+
+
+# ---- fetching -------------------------------------------------------------------------------
+
+def cache_path(url):
+    return os.path.join(CACHE_DIR, hashlib.sha1(url.encode()).hexdigest() + ".ics")
+
+
+def fetch(url):
+    url = re.sub(r"^webcal://", "https://", url)
+    req = urllib.request.Request(url, headers={"User-Agent": "zunder-agenda-plugin"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = r.read().decode("utf-8", "replace")
+    if "BEGIN:VCALENDAR" not in data:
+        raise ValueError("not an ICS calendar")
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    path = cache_path(url)
+    with open(path + ".tmp", "w") as f:
+        f.write(data)
+    os.replace(path + ".tmp", path)
+    return data
+
+
+def load(url):
+    """Cached calendar; a stale one is used and refreshed in the background."""
+    path = cache_path(re.sub(r"^webcal://", "https://", url))
+    try:
+        age = time.time() - os.path.getmtime(path)
+        with open(path) as f:
+            data = f.read()
+    except OSError:
+        return fetch(url)
+    if age > TTL:
+        os.utime(path)
+        subprocess.Popen([sys.executable, os.path.realpath(__file__), "--refresh", url],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return data
+
+
+# ---- parsing --------------------------------------------------------------------------------
+
+def unescape(v):
+    return re.sub(r"\\(.)", lambda m: "\n" if m.group(1) in "nN" else m.group(1), v)
+
+
+def lines(data):
+    out = []
+    for raw in data.splitlines():
+        if raw[:1] in (" ", "\t") and out:
+            out[-1] += raw[1:]
+        elif raw:
+            out.append(raw)
+    return out
+
+
+def parse_prop(line):
+    head, _, value = line.partition(":")
+    name, *params = head.split(";")
+    return name.upper(), dict(p.split("=", 1) for p in params if "=" in p), value
+
+
+def zone(tzid):
+    if tzid and ZoneInfo:
+        try:
+            return ZoneInfo(tzid.strip('"'))
+        except Exception:  # unknown or Windows-style TZID
+            pass
+    return LOCAL
+
+
+def parse_dt(value, params):
+    """-> (datetime or date, tzinfo); dates are all-day."""
+    value = value.strip()
+    if params.get("VALUE") == "DATE" or re.fullmatch(r"\d{8}", value):
+        return dt.datetime.strptime(value[:8], "%Y%m%d").date(), None
+    if value.endswith("Z"):
+        return dt.datetime.strptime(value[:15], "%Y%m%dT%H%M%S").replace(tzinfo=dt.timezone.utc), dt.timezone.utc
+    tz = zone(params.get("TZID"))
+    return dt.datetime.strptime(value[:15], "%Y%m%dT%H%M%S").replace(tzinfo=tz), tz
+
+
+def parse_duration(v):
+    m = re.fullmatch(r"([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", v.strip())
+    if not m:
+        return dt.timedelta(0)
+    sign, w, d, h, mi, s = m.groups()
+    td = dt.timedelta(weeks=int(w or 0), days=int(d or 0), hours=int(h or 0), minutes=int(mi or 0),
+                      seconds=int(s or 0))
+    return -td if sign == "-" else td
+
+
+def events(data):
+    out, cur = [], None
+    for line in lines(data):
+        if line == "BEGIN:VEVENT":
+            cur = {"exdates": set()}
+        elif line == "END:VEVENT" and cur is not None:
+            if "start" in cur:
+                out.append(cur)
+            cur = None
+        elif cur is not None:
+            name, params, value = parse_prop(line)
+            if name == "DTSTART":
+                cur["start"], cur["tz"] = parse_dt(value, params)
+            elif name == "DTEND":
+                cur["end"], _ = parse_dt(value, params)
+            elif name == "DURATION":
+                cur["duration"] = parse_duration(value)
+            elif name == "RRULE":
+                cur["rrule"] = dict(p.split("=", 1) for p in value.split(";") if "=" in p)
+            elif name == "EXDATE":
+                for v in value.split(","):
+                    cur["exdates"].add(key(parse_dt(v, params)[0]))
+            elif name == "RECURRENCE-ID":
+                cur["recurrence"] = key(parse_dt(value, params)[0])
+            elif name in ("SUMMARY", "LOCATION", "DESCRIPTION", "UID", "STATUS", "URL"):
+                cur[name.lower()] = unescape(value)
+    return out
+
+
+def key(d):
+    """Comparable identity of an occurrence start."""
+    if isinstance(d, dt.datetime):
+        return d.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%S")
+    return d.strftime("%Y%m%d")
+
+
+# ---- recurrence -----------------------------------------------------------------------------
+
+def nth_weekday(year, month, weekday, n):
+    days = [d for d in range(1, calendar.monthrange(year, month)[1] + 1)
+            if calendar.weekday(year, month, d) == weekday]
+    try:
+        return days[n - 1] if n > 0 else days[n]
+    except IndexError:
+        return None
+
+
+def occurrences(ev, until, after=None):
+    """Start dates/datetimes of `ev` up to `until`. Supports FREQ DAILY/WEEKLY/MONTHLY/YEARLY with
+    INTERVAL, COUNT, UNTIL, BYDAY (incl. 2MO, -1FR for MONTHLY) and BYMONTHDAY."""
+    start = ev["start"]
+    rule = ev.get("rrule")
+    if not rule:
+        yield start
+        return
+    allday = not isinstance(start, dt.datetime)
+    tz = None if allday else start.tzinfo
+    naive = start if allday else start.replace(tzinfo=None)
+    freq = rule.get("FREQ", "")
+    interval = max(1, int(rule.get("INTERVAL", "1") or 1))
+    count = int(rule["COUNT"]) if rule.get("COUNT", "").isdigit() else None
+    end = until
+    if rule.get("UNTIL"):
+        u, _ = parse_dt(rule["UNTIL"], {})
+        if isinstance(u, dt.datetime):
+            end = min(end, u if allday is False else u.date())
+        else:
+            end = min(end, u if allday else dt.datetime.combine(u, dt.time(23, 59, 59), tzinfo=tz))
+    byday = [m for m in (re.fullmatch(r"([+-]?\d+)?(MO|TU|WE|TH|FR|SA|SU)", d) for d in rule.get("BYDAY", "").split(","))
+             if m]
+    bymonthday = [int(d) for d in rule.get("BYMONTHDAY", "").split(",") if re.fullmatch(r"-?\d+", d)]
+
+    def emit(n):
+        return n if allday else n.replace(tzinfo=tz)
+
+    def candidates(i):
+        if freq == "DAILY":
+            return [naive + dt.timedelta(days=i * interval)]
+        if freq == "WEEKLY":
+            week = naive - dt.timedelta(days=naive.weekday()) + dt.timedelta(weeks=i * interval)
+            days = [DAYS.index(m.group(2)) for m in byday] or [naive.weekday()]
+            return [week + dt.timedelta(days=d) for d in sorted(days)]
+        if freq in ("MONTHLY", "YEARLY"):
+            if freq == "MONTHLY":
+                y, m = divmod(naive.month - 1 + i * interval, 12)
+                y, m = naive.year + y, m + 1
+            else:
+                y, m = naive.year + i * interval, naive.month
+            last = calendar.monthrange(y, m)[1]
+            if byday and freq == "MONTHLY":
+                ds = [nth_weekday(y, m, DAYS.index(b.group(2)), int(b.group(1))) if b.group(1)
+                      else None for b in byday]
+                if not any(b.group(1) for b in byday):  # BYDAY=MO: every Monday of the month
+                    ds = [d for d in range(1, last + 1) if calendar.weekday(y, m, d) in
+                          [DAYS.index(b.group(2)) for b in byday]]
+            elif bymonthday:
+                ds = [d if d > 0 else last + 1 + d for d in bymonthday]
+            else:
+                ds = [naive.day]
+            return [naive.replace(year=y, month=m, day=d) for d in sorted(x for x in ds if x and 1 <= x <= last)]
+        return []
+
+    if freq not in ("DAILY", "WEEKLY", "MONTHLY", "YEARLY"):
+        yield start
+        return
+    # without COUNT, jump close to `after` so old daily/weekly series don't run out of steps
+    i0 = 0
+    if count is None and after is not None:
+        a = after.date() if isinstance(after, dt.datetime) else after
+        gap = (a - (naive.date() if not allday else naive)).days
+        step = {"DAILY": interval, "WEEKLY": 7 * interval, "MONTHLY": 31 * interval,
+                "YEARLY": 366 * interval}[freq]
+        i0 = max(0, gap // step - 1)
+    n = 0
+    for i in range(i0, i0 + 5000):
+        for c in candidates(i):
+            if c < naive:
+                continue
+            e = emit(c)
+            if e > end:
+                return
+            n += 1
+            if count is not None and n > count:
+                return
+            yield e
+
+
+# ---- output ---------------------------------------------------------------------------------
+
+def as_dt(d):
+    return d if isinstance(d, dt.datetime) else dt.datetime.combine(d, dt.time(), tzinfo=LOCAL)
+
+
+def when(start, end, now):
+    s, e = as_dt(start).astimezone(LOCAL), as_dt(end).astimezone(LOCAL)
+    today = now.date()
+    day = s.date()
+    label = ("today" if day == today else "tomorrow" if day == today + dt.timedelta(days=1)
+             else s.strftime("%a %d %b"))
+    if not isinstance(start, dt.datetime):
+        span = (e.date() - day).days
+        return label + (" · all day" if span <= 1 else f" · {span} days")
+    return f"{label} {s:%H:%M}–{e:%H:%M}"
+
+
+def relative(start, end, now):
+    s, e = as_dt(start), as_dt(end)
+    if s <= now < e:
+        return "now"
+    mins = int((s - now).total_seconds() // 60)
+    if mins < 60:
+        return f"in {mins} min"
+    if mins < 24 * 60:
+        return f"in {mins // 60} h"
+    return f"in {mins // (24 * 60)} d"
+
+
+def main():
+    if sys.argv[1:2] == ["--refresh"]:
+        fetch(sys.argv[2])
+        return
+    urls = os.environ.get("ZUNDER_URL", "").split()
+    if not urls:
+        sys.exit("set an ICS URL in Settings → Plugins → Agenda")
+    try:
+        days = max(1, int(os.environ.get("ZUNDER_DAYS", "14")))
+    except ValueError:
+        days = 14
+    words = (sys.argv[1] if len(sys.argv) > 1 else "").lower().split()
+    now = dt.datetime.now(LOCAL)
+    horizon = now + dt.timedelta(days=days)
+
+    found, errors = [], []
+    for url in urls:
+        try:
+            evs = events(load(url))
+        except Exception as e:
+            errors.append(f"{url.split('/')[2] if '//' in url else url}: {e}")
+            continue
+        overrides = {(e.get("uid"), e["recurrence"]) for e in evs if "recurrence" in e}
+        for ev in evs:
+            if ev.get("status", "").upper() == "CANCELLED":
+                continue
+            dur = (ev.get("duration") if "duration" in ev
+                   else (as_dt(ev["end"]) - as_dt(ev["start"])) if "end" in ev
+                   else dt.timedelta(days=1) if not isinstance(ev["start"], dt.datetime) else dt.timedelta(0))
+            limit = horizon if isinstance(ev["start"], dt.datetime) else horizon.date()
+            for s in occurrences(ev, limit, now - dur - dt.timedelta(days=1)):
+                k = key(s)
+                if k in ev["exdates"] or ("recurrence" not in ev and (ev.get("uid"), k) in overrides):
+                    continue
+                e = s + dur
+                if as_dt(e) <= now:
+                    continue
+                found.append((as_dt(s), s, e, ev))
+
+    found.sort(key=lambda f: f[0])
+    shown = 0
+    for _, s, e, ev in found:
+        title = ev.get("summary", "(no title)")
+        loc = ev.get("location", "")
+        if not all(w in f"{title} {loc}".lower() for w in words):
+            continue
+        sub = when(s, e, now) + (f" · {loc}" if loc else "")
+        link = ev.get("url") or next(iter(LINK.findall(f"{loc} {ev.get('description', '')}")), None)
+        row = {"title": title, "subtitle": sub, "hint": relative(s, e, now),
+               "action": {"open": link} if link else {"copy": f"{title}, {when(s, e, now)}"},
+               "actions": [{"title": "Copy", "copy": f"{title}, {sub}"}]}
+        if ev.get("description"):
+            row["preview"] = ev["description"].strip()[:2000]
+        print(json.dumps(row, ensure_ascii=False))
+        shown += 1
+        if shown >= 50:
+            break
+    if not found and not errors:
+        print(json.dumps({"title": f"Nothing in the next {days} days"}))
+    for err in errors:
+        print(json.dumps({"title": "Calendar error", "subtitle": err, "glyph": "\uf071"}))
+
+
+if __name__ == "__main__":
+    main()
