@@ -2,6 +2,132 @@
   "version": 1,
   "plugins": [
     {
+      "name": "agenda",
+      "title": "Agenda",
+      "description": "Your next events from an ICS calendar URL",
+      "prefix": "cal",
+      "glyph": "",
+      "mode": "search",
+      "file": "agenda/agenda",
+      "commit": "1fb447789e3c4ef1b744484006d11f25dd1a551d",
+      "sha256": "3b59d6f614b4e4b841b832c40c0a82c06dc1d1909371e814e44a65c6d7b820b4",
+      "requires": [],
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "settings": [
+        {
+          "key": "url",
+          "help": "ICS calendar URL (several separated by spaces), e.g. Google's secret iCal address"
+        },
+        {
+          "key": "days",
+          "help": "How many days ahead to show (default 14)"
+        }
+      ]
+    },
+    {
+      "name": "audio",
+      "title": "Audio",
+      "description": "Switch the default audio output or input with wpctl",
+      "prefix": "audio",
+      "glyph": "",
+      "mode": "search",
+      "file": "audio/audio",
+      "commit": "93362ee17a2072876ff6620e0ada87a41a706132",
+      "sha256": "ebc6ad5384eac9c044731f68ea66b222250d9cb4abfed198c3905a1f54f00ff6",
+      "requires": [
+        "wpctl"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": []
+    },
+    {
+      "name": "bluetooth",
+      "title": "Bluetooth",
+      "description": "Connect and disconnect paired Bluetooth devices with bluetoothctl",
+      "prefix": "bt",
+      "glyph": "",
+      "mode": "search",
+      "file": "bluetooth/bluetooth",
+      "commit": "6f6c3d82703d64acb08d46b49efaec9db31ed8e4",
+      "sha256": "71d44aac9a07b6c7b495282ac122b3edec0a36ba45bd57907332265b1a7d364e",
+      "requires": [
+        "bluetoothctl"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": []
+    },
+    {
+      "name": "color",
+      "title": "Color Picker",
+      "description": "Pick a colour from the screen, copy it as hex, rgb or hsl",
+      "prefix": "color",
+      "glyph": "",
+      "mode": "search",
+      "file": "color/color",
+      "commit": "372c4dfaf4906716bf5614219ddb2b67c5b75957",
+      "sha256": "87fb0c92585ff8cfc994c182dd9142709f8944309f2f4af37be4ce8bf34d0cc5",
+      "requires": [
+        "hyprpicker",
+        "wl-copy"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": []
+    },
+    {
+      "name": "github",
+      "title": "GitHub",
+      "description": "Search your GitHub repos and open them",
+      "prefix": "gh",
+      "glyph": "",
+      "mode": "search",
+      "file": "github/github",
+      "commit": "268bdb74cf8d59838913ba3b767f21d799a5b413",
+      "sha256": "0d7f2b0a0c6f934f48c1ddeecd0cfaa76e646503d57ad0eeb34240dec0423cff",
+      "requires": [],
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "settings": [
+        {
+          "key": "token",
+          "help": "GitHub token (optional, falls back to the gh CLI)"
+        },
+        {
+          "key": "limit",
+          "help": "How many repos to list (default 100)"
+        }
+      ]
+    },
+    {
+      "name": "ip",
+      "title": "Copy Local IP",
+      "description": "Copy your local IPv4 address to the clipboard",
+      "prefix": "ip",
+      "glyph": "",
+      "mode": "command",
+      "file": "ip/ip",
+      "commit": "d6dd7b87264df8b2d7c13e1d2eb5cc944ecba3a2",
+      "sha256": "f320b089ca079e5e9eb94a107d018fb2104fd1aa6eccedbb29689e1b086ed028",
+      "requires": [
+        "ip",
+        "wl-copy"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": []
+    },
+    {
       "name": "kill",
       "title": "Kill Process",
       "description": "Search your processes by name, sorted by CPU, Enter kills one",
@@ -17,6 +143,114 @@
       "platforms": [
         "linux",
         "macos"
+      ],
+      "settings": []
+    },
+    {
+      "name": "pass",
+      "title": "Passwords",
+      "description": "Search pass or gopass entries and copy passwords or usernames",
+      "prefix": "pass",
+      "glyph": "",
+      "mode": "search",
+      "file": "pass/pass",
+      "commit": "488c8216aed55b2d1476111171528ac467c054bd",
+      "sha256": "9d6d7b7e94f0a8a770eb5145c12ac0be0ec4ad7af59f26ddcea7ea401796fe49",
+      "requires": [
+        "wl-copy"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": [
+        {
+          "key": "backend",
+          "help": "pass or gopass (default: gopass if installed, else pass)"
+        }
+      ]
+    },
+    {
+      "name": "quicklinks",
+      "title": "Quicklinks",
+      "description": "Search sites with a keyword, e.g. \"q yt lofi\"",
+      "prefix": "q",
+      "glyph": "",
+      "mode": "search",
+      "file": "quicklinks/quicklinks",
+      "commit": "0f46663819a3fdfea4716eaf9ebd7e0d76660e44",
+      "sha256": "efa58f12bf09aa7d03f00b7f2b9f1fe64de03461187665df9d2aabd05a3074d6",
+      "requires": [],
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "settings": [
+        {
+          "key": "links",
+          "help": "More links as key=url separated by spaces, {} is the query, e.g. mdn=https://developer.mozilla.org/search?q={}"
+        }
+      ]
+    },
+    {
+      "name": "screenshot",
+      "title": "Screenshot",
+      "description": "Screenshot a region, window or screen with grim and slurp, saved and copied",
+      "prefix": "shot",
+      "glyph": "",
+      "mode": "search",
+      "file": "screenshot/screenshot",
+      "commit": "5121bde7019d29f511ea8b5affd4509922060bb9",
+      "sha256": "e0a39fc00c0026994bbc8a504bd2f9a5d7bd5282844ea53e1f1876e5ed40e494",
+      "requires": [
+        "grim",
+        "slurp",
+        "wl-copy",
+        "jq",
+        "hyprctl"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": [
+        {
+          "key": "dir",
+          "help": "Folder for screenshots (default ~/Pictures/Screenshots)"
+        }
+      ]
+    },
+    {
+      "name": "systemd",
+      "title": "Services",
+      "description": "Search systemd user and system services, start, stop or restart them",
+      "prefix": "sd",
+      "glyph": "",
+      "mode": "search",
+      "file": "systemd/systemd",
+      "commit": "9acc19fe9d9ea6c93e9db8e58e5a3b9fa238d4f5",
+      "sha256": "419f8e1cd401e6d0ba69f1f8ba560fac52e5ed5ee22f8f6c8f2e7aea6e0e8414",
+      "requires": [
+        "systemctl"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "settings": []
+    },
+    {
+      "name": "wifi",
+      "title": "Wi-Fi",
+      "description": "Connect to Wi-Fi networks with nmcli",
+      "prefix": "wifi",
+      "glyph": "",
+      "mode": "search",
+      "file": "wifi/wifi",
+      "commit": "479f9fffea023b078458faf85f67bdb3db2bfa43",
+      "sha256": "68c766b36afce4e773c865234f9dc9021ec567a5ce75cac984e1d1e66592003b",
+      "requires": [
+        "nmcli"
+      ],
+      "platforms": [
+        "linux"
       ],
       "settings": []
     }
