@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+# Search the web with a keyword: `q yt lofi` opens a YouTube search for "lofi".
+# @zunder.name        Quicklinks
+# @zunder.prefix      q
+# @zunder.glyph       
+# @zunder.description Search sites with a keyword, e.g. "q yt lofi"
+# @zunder.platforms   linux macos
+# @zunder.setting     links "More links as key=url separated by spaces, {} is the query, e.g. mdn=https://developer.mozilla.org/search?q={}"
+import json
+import os
+import sys
+import urllib.parse
+
+LINKS = {
+    "yt": ("YouTube", "https://www.youtube.com/results?search_query={}"),
+    "wiki": ("Wikipedia", "https://en.wikipedia.org/w/index.php?search={}"),
+    "aur": ("AUR", "https://aur.archlinux.org/packages?K={}"),
+    "crates": ("crates.io", "https://crates.io/search?q={}"),
+    "gh": ("GitHub", "https://github.com/search?q={}"),
+    "maps": ("Maps", "https://www.openstreetmap.org/search?query={}"),
+}
+
+
+def links():
+    out = dict(LINKS)
+    for item in os.environ.get("ZUNDER_LINKS", "").split():
+        key, sep, url = item.partition("=")
+        if sep and key and url.startswith(("http://", "https://")):
+            out[key] = (urllib.parse.urlsplit(url).hostname or key, url)
+    return out
+
+
+def main():
+    q = sys.argv[1] if len(sys.argv) > 1 else ""
+    key, _, rest = q.strip().partition(" ")
+    rest = rest.strip()
+    all_links = links()
+    # an exact key wins, so `q gh x` doesn't also offer other links starting with "gh"
+    matches = [key] if key in all_links and rest else [k for k in all_links if k.startswith(key)]
+    for k in matches:
+        name, url = all_links[k]
+        if rest:
+            target = url.replace("{}", urllib.parse.quote(rest))
+            print(json.dumps({"title": f"{name}: {rest}", "hint": k, "action": {"open": target},
+                              "actions": [{"title": "Copy link", "copy": target}]}, ensure_ascii=False))
+        else:
+            print(json.dumps({"title": name, "subtitle": f"q {k} <query>", "hint": k,
+                              "action": {"fill": f"q {k} "}}, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
