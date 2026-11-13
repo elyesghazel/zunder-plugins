@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "kill",
+      "title": "Kill Process",
+      "description": "Search your processes by name, sorted by CPU, Enter kills one",
+      "prefix": "kill",
+      "glyph": "",
+      "mode": "search",
+      "file": "kill/kill",
+      "commit": "9044dad955bb3913636696f1c72109ab51fd39c9",
+      "sha256": "01877067034ff7206250e2f9086c1c497c38a4387ccbf9d16384f464d8c24b45",
+      "requires": [
+        "ps"
+      ],
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "settings": []
+    }
+  ]
+}
