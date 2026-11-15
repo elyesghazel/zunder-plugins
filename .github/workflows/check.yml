@@ -24,3 +24,17 @@ jobs:
           fi
       - name: Index builds
         run: python3 scripts/build-index.py && python3 -m json.tool index.json > /dev/null
+      - name: Python plugins print valid lines
+        run: python3 scripts/test-plugins.py
+
+  windows:
+    # the real Windows test: every .ps1 under Windows PowerShell, the way zunder runs it,
+    # plus the Python plugins. Sample queries only list, nothing connects or stops.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: PowerShell and Python plugins print valid lines
+        run: python scripts/test-plugins.py
