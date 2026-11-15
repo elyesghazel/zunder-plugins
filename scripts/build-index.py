@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build index.json from the plugin headers, or check them with --check.
 
-Each plugin lives in <name>/<name>. Headers are read the way zunder reads them
-(src/providers/plugins.rs): the first 30 lines of the first 4096 bytes, any line
-containing `@zunder.<key> <value>`.
+Each plugin lives in <name>/<name>, with an optional Windows variant <name>/<name>.ps1.
+Headers are read the way zunder reads them (src/providers/plugins.rs): the first 30 lines
+of the first 4096 bytes, any line containing `@zunder.<key> <value>`.
 
     scripts/build-index.py            write index.json
     scripts/build-index.py --check    validate every plugin, exit 1 on errors
@@ -19,6 +19,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHELLS = {"sh", "bash", "dash", "ksh"}
+COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+# headers a .ps1 variant must share with the main script, so the plugin looks the same everywhere
+SHARED = ("name", "prefix", "glyph", "color", "mode")
 
 
 def unescape(s):
@@ -78,11 +81,26 @@ def last_commit(name):
     return r.stdout.strip()
 
 
+def sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def words(value):
+    return [v for v in re.split(r"[\s,]+", value) if v]
+
+
+def windows_variant(name):
+    """<name>/<name>.ps1, or None."""
+    path = os.path.join(ROOT, name, f"{name}.ps1")
+    return path if os.path.isfile(path) else None
+
+
 def entry(name):
     path = os.path.join(ROOT, name, name)
     p = {"name": name, "title": name, "description": "", "prefix": name,
          "glyph": "", "mode": "search", "file": f"{name}/{name}",
-         "commit": last_commit(name), "sha256": "",
+         "commit": last_commit(name), "sha256": sha256(path),
          "requires": [], "platforms": [], "settings": []}
     for key, value in headers(path):
         if key == "name":
@@ -91,12 +109,14 @@ def entry(name):
             p["prefix"] = value
         elif key == "glyph":
             p["glyph"] = unescape(value)
+        elif key == "color" and COLOR.fullmatch(value):
+            p["color"] = value.lower()
         elif key == "mode":
             p["mode"] = "command" if value == "command" else "search"
         elif key == "description":
             p["description"] = value
         elif key in ("requires", "platforms"):
-            p[key] += [v for v in re.split(r"[\s,]+", value) if v]
+            p[key] += words(value)
         elif key == "setting":
             k, _, help_ = value.partition(" ")
             help_ = help_.strip()
@@ -106,8 +126,12 @@ def entry(name):
                 pass
             if k:
                 p["settings"].append({"key": k, "help": help_})
-    with open(path, "rb") as f:
-        p["sha256"] = hashlib.sha256(f.read()).hexdigest()
+    ps1 = windows_variant(name)
+    if ps1:
+        requires = [v for key, value in headers(ps1) if key == "requires" for v in words(value)]
+        p["windows"] = {"file": f"{name}/{name}.ps1", "sha256": sha256(ps1), "requires": requires}
+        if "windows" not in p["platforms"]:
+            p["platforms"].append("windows")
     return p
 
 
@@ -128,8 +152,35 @@ def check(name):
         errors.append(f"{name}/{name}: missing `# @zunder.description ...` in the first 30 lines")
     if hs.get("mode", "search") not in ("search", "command"):
         errors.append(f"{name}/{name}: mode must be search or command")
+    if "color" in hs and not COLOR.fullmatch(hs["color"]):
+        errors.append(f"{name}/{name}: color must be #rrggbb, got {hs['color']!r}")
     if not os.path.isfile(os.path.join(d, "README.md")):
         errors.append(f"{name}/: missing README.md")
+    ps1 = windows_variant(name)
+    if ps1:
+        ws = dict(headers(ps1))
+        if not ws.get("description"):
+            errors.append(f"{name}/{name}.ps1: missing `# @zunder.description ...` in the first 30 lines")
+        for key in SHARED:
+            if unescape(ws.get(key, "")) != unescape(hs.get(key, "")):
+                errors.append(f"{name}/{name}.ps1: @zunder.{key} is {ws.get(key)!r}, "
+                              f"{name}/{name} has {hs.get(key)!r}")
+        with open(ps1, "rb") as f:
+            data = f.read()
+        if any(b > 127 for b in data):
+            # Windows PowerShell 5.1 reads a .ps1 without BOM as ANSI: write \uXXXX / [char]0x...
+            errors.append(f"{name}/{name}.ps1: non-ASCII bytes, Windows PowerShell would misread them")
+    return errors
+
+
+def duplicate_colors(names):
+    seen, errors = {}, []
+    for n in names:
+        path = os.path.join(ROOT, n, n)
+        c = dict(headers(path)).get("color", "").lower() if os.path.isfile(path) else ""
+        if c and c in seen:
+            errors.append(f"{n}/{n}: color {c} is already used by {seen[c]}")
+        seen.setdefault(c, n)
     return errors
 
 
@@ -143,7 +194,7 @@ def main():
                 print(f"{n}/{n}")
         return 0
     if "--check" in args:
-        errors = [e for n in names for e in check(n)]
+        errors = [e for n in names for e in check(n)] + duplicate_colors(names)
         for e in errors:
             print(f"::error::{e}" if os.environ.get("GITHUB_ACTIONS") else e, file=sys.stderr)
         print(f"{len(names)} plugins, {len(errors)} errors")
