@@ -142,6 +142,8 @@ def sample_calendar(folder):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     with tempfile.TemporaryDirectory() as tmp:
         env = {k: v for k, v in os.environ.items() if not k.startswith("ZUNDER_")}
         env["XDG_CACHE_HOME"] = tmp
