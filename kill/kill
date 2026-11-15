@@ -3,6 +3,7 @@
 # @zunder.name   Kill Process
 # @zunder.prefix kill
 # @zunder.glyph  
+# @zunder.color  #c94f4f
 # @zunder.description Search your processes by name, sorted by CPU, Enter kills one
 # @zunder.requires    ps
 # @zunder.platforms   linux macos

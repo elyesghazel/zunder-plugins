@@ -3,6 +3,7 @@
 # @zunder.name        Passwords
 # @zunder.prefix      pass
 # @zunder.glyph       
+# @zunder.color       #9457c9
 # @zunder.description Search pass or gopass entries and copy passwords or usernames
 # @zunder.requires    wl-copy
 # @zunder.platforms   linux

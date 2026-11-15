@@ -3,6 +3,7 @@
 # @zunder.name        Wi-Fi
 # @zunder.prefix      wifi
 # @zunder.glyph       
+# @zunder.color       #2a9d8f
 # @zunder.description Connect to Wi-Fi networks with nmcli
 # @zunder.requires    nmcli
 # @zunder.platforms   linux

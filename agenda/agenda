@@ -3,6 +3,7 @@
 # @zunder.name        Agenda
 # @zunder.prefix      cal
 # @zunder.glyph       \uf073
+# @zunder.color       #d07a3a
 # @zunder.description Your next events from an ICS calendar URL
 # @zunder.platforms   linux macos
 # @zunder.setting     url "ICS calendar URL (several separated by spaces), e.g. Google's secret iCal address"
