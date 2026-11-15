@@ -5,7 +5,7 @@
 # @zunder.glyph       \uf073
 # @zunder.color       #d07a3a
 # @zunder.description Your next events from an ICS calendar URL
-# @zunder.platforms   linux macos
+# @zunder.platforms   linux macos windows
 # @zunder.setting     url "ICS calendar URL (several separated by spaces), e.g. Google's secret iCal address"
 # @zunder.setting     days "How many days ahead to show (default 14)"
 import calendar
@@ -33,6 +33,20 @@ LINK = re.compile(r"https?://[^\s<>\"\\]*(?:meet\.google|zoom\.us|teams\.microso
 
 # ---- fetching -------------------------------------------------------------------------------
 
+def spawn_detached(args):
+    """A background refresh that outlives this call (zunder kills the call on the next key)."""
+    kw = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL}
+    if os.name != "nt":
+        subprocess.Popen(args, start_new_session=True, **kw)
+        return
+    # no console window; leave zunder's job object when it allows that
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(args, creationflags=flags | 0x01000000, **kw)  # CREATE_BREAKAWAY_FROM_JOB
+    except OSError:
+        subprocess.Popen(args, creationflags=flags, **kw)
+
+
 def cache_path(url):
     return os.path.join(CACHE_DIR, hashlib.sha1(url.encode()).hexdigest() + ".ics")
 
@@ -46,7 +60,7 @@ def fetch(url):
         raise ValueError("not an ICS calendar")
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = cache_path(url)
-    with open(path + ".tmp", "w") as f:
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
         f.write(data)
     os.replace(path + ".tmp", path)
     return data
@@ -57,14 +71,13 @@ def load(url):
     path = cache_path(re.sub(r"^webcal://", "https://", url))
     try:
         age = time.time() - os.path.getmtime(path)
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = f.read()
     except OSError:
         return fetch(url)
     if age > TTL:
         os.utime(path)
-        subprocess.Popen([sys.executable, os.path.realpath(__file__), "--refresh", url],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        spawn_detached([sys.executable, os.path.realpath(__file__), "--refresh", url])
     return data
 
 
@@ -278,6 +291,8 @@ def relative(start, end, now):
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):  # Windows pipes default to the ANSI code page
+        sys.stdout.reconfigure(encoding="utf-8")
     if sys.argv[1:2] == ["--refresh"]:
         fetch(sys.argv[2])
         return
