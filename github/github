@@ -3,6 +3,7 @@
 # @zunder.name        GitHub
 # @zunder.prefix      gh
 # @zunder.glyph       
+# @zunder.color       #6b5fd6
 # @zunder.description Search your GitHub repos and open them
 # @zunder.platforms   linux macos
 # @zunder.setting     token "GitHub token (optional, falls back to the gh CLI)"

@@ -3,6 +3,7 @@
 # @zunder.name        Audio
 # @zunder.prefix      audio
 # @zunder.glyph       
+# @zunder.color       #d65a7a
 # @zunder.description Switch the default audio output or input with wpctl
 # @zunder.requires    wpctl
 # @zunder.platforms   linux

@@ -3,6 +3,7 @@
 # @zunder.name        Color Picker
 # @zunder.prefix      color
 # @zunder.glyph       
+# @zunder.color       #c04f9e
 # @zunder.description Pick a colour from the screen, copy it as hex, rgb or hsl
 # @zunder.requires    hyprpicker wl-copy
 # @zunder.platforms   linux

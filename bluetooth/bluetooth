@@ -3,6 +3,7 @@
 # @zunder.name        Bluetooth
 # @zunder.prefix      bt
 # @zunder.glyph       
+# @zunder.color       #3f72d6
 # @zunder.description Connect and disconnect paired Bluetooth devices with bluetoothctl
 # @zunder.requires    bluetoothctl
 # @zunder.platforms   linux

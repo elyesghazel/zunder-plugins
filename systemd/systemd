@@ -3,6 +3,7 @@
 # @zunder.name        Services
 # @zunder.prefix      sd
 # @zunder.glyph       
+# @zunder.color       #46a35e
 # @zunder.description Search systemd user and system services, start, stop or restart them
 # @zunder.requires    systemctl
 # @zunder.platforms   linux

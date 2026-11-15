@@ -3,6 +3,7 @@
 # @zunder.name        Quicklinks
 # @zunder.prefix      q
 # @zunder.glyph       
+# @zunder.color       #8a9f35
 # @zunder.description Search sites with a keyword, e.g. "q yt lofi"
 # @zunder.platforms   linux macos
 # @zunder.setting     links "More links as key=url separated by spaces, {} is the query, e.g. mdn=https://developer.mozilla.org/search?q={}"

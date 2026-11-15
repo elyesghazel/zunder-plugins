@@ -3,6 +3,7 @@
 # @zunder.name        Screenshot
 # @zunder.prefix      shot
 # @zunder.glyph       
+# @zunder.color       #c79a2a
 # @zunder.description Screenshot a region, window or screen with grim and slurp, saved and copied
 # @zunder.requires    grim slurp wl-copy jq hyprctl
 # @zunder.platforms   linux
