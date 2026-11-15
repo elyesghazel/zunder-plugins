@@ -5,7 +5,7 @@
 # @zunder.glyph       
 # @zunder.color       #8a9f35
 # @zunder.description Search sites with a keyword, e.g. "q yt lofi"
-# @zunder.platforms   linux macos
+# @zunder.platforms   linux macos windows
 # @zunder.setting     links "More links as key=url separated by spaces, {} is the query, e.g. mdn=https://developer.mozilla.org/search?q={}"
 import json
 import os
@@ -32,6 +32,8 @@ def links():
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):  # Windows pipes default to the ANSI code page
+        sys.stdout.reconfigure(encoding="utf-8")
     q = sys.argv[1] if len(sys.argv) > 1 else ""
     key, _, rest = q.strip().partition(" ")
     rest = rest.strip()
