@@ -35,7 +35,7 @@ PYTHON = {
     "quicklinks": [("", 3), ("yt lofi", 1)],
     "agenda": [("", 1), ("caf", 1)],
     # no token in CI: either repos or a readable error, both are fine
-    "github": [("", 0)],
+    "github": [("", 0), ("pr", 0), ("review", 0), ("issues", 0), ("notif", 0), ("zunder", 0)],
 }
 
 

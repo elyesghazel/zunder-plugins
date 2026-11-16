@@ -15,7 +15,7 @@ One folder per plugin: the executable (same name as the folder), a `README.md` a
 | [audio](audio) | `audio` | Switch the default audio output or input (wpctl) | Linux |
 | [bluetooth](bluetooth) | `bt` | Connect and disconnect paired Bluetooth devices (bluetoothctl) | Linux |
 | [color](color) | `color` | Pick a colour from the screen, copy it as hex, rgb or hsl | Linux |
-| [github](github) | `gh` | Search your GitHub repos and open them | Linux, macOS, Windows |
+| [github](github) | `gh` | Your repos, PRs, review requests, issues and notifications | Linux, macOS, Windows |
 | [ip](ip) | command | Copy your local IPv4 address | Linux, Windows |
 | [kill](kill) | `kill` | Search your processes, sorted by CPU, Enter stops one | Linux, macOS, Windows |
 | [pass](pass) | `pass` | Copy passwords or usernames from pass or gopass | Linux |
