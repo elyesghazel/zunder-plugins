@@ -90,13 +90,13 @@
     {
       "name": "github",
       "title": "GitHub",
-      "description": "Search your GitHub repos and open them",
+      "description": "Your repos, pull requests, review requests, issues and notifications",
       "prefix": "gh",
-      "glyph": "",
+      "glyph": "",
       "mode": "search",
       "file": "github/github",
-      "commit": "2e04f03125303ae051a69e0b90e8a277faadae78",
-      "sha256": "285be670b2e30d8739bb78d1eed6042c44c77a79141e483795a752082cba5467",
+      "commit": "7dc43120994e2dc33807b31a6fc08db38e288309",
+      "sha256": "46bbd1c3537e0c7ef786e4ba77d5bbd9495f945c73c3347c18b07de97daaf635",
       "requires": [],
       "platforms": [
         "linux",
@@ -106,7 +106,7 @@
       "settings": [
         {
           "key": "token",
-          "help": "GitHub token (optional, falls back to the gh CLI)"
+          "help": "GitHub token (optional, falls back to the gh CLI). Classic with repo + notifications scope"
         },
         {
           "key": "limit",
